@@ -5,9 +5,11 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 import PIL.Image as Image
 import clip, torch, numpy as np
-
+import h5py
+import ast
 
 model, preprocess = clip.load("ViT-B/32", device='cuda')
+
 
 def read_txt_to_list(file):
     output = [] 
@@ -26,7 +28,7 @@ def read_pointcloud(scan_id):
     """
     Reads a pointcloud from a file and returns points with instance label.
     """
-    plydata = trimesh.load(os.path.join('/data/wangziqin/project/CVPR2023-VLSAT/data/3RScan', scan_id, 'labels.instances.annotated.v2.ply'), process=False)
+    plydata = trimesh.load(os.path.join('/home/wingrune/3rscan-datasets/3DSSG/data/3RScan/data/3RScan/', scan_id, 'labels.instances.annotated.v2.ply'), process=False)
     points = np.array(plydata.vertices)
     labels = np.array(plydata.metadata['ply_raw']['vertex']['data']['objectId'])
 
@@ -50,14 +52,19 @@ def read_json(split):
     """
     Reads a json file and returns points with instance label.
     """
+    classes = set()
+    classes = classes.union(read_txt_to_list('/home/wingrune/3rscan-datasets/3DSSG/data/3RScan/3DSSG_subset/classes.txt'))
+    relations_list = set()
+    relations_list = relations_list.union(read_txt_to_list('/home/wingrune/3rscan-datasets/CVPR2023-VLSAT/data/3DSSG_subset/relationships.txt'))
+    relations_list = list(relations_list)
     selected_scans = set()
     if split == 'train' :
-        selected_scans = selected_scans.union(read_txt_to_list('/data/wangziqin/project/CVPR2023-VLSAT/data/3DSSG_subset/train_scans.txt'))
-        with open("/data/wangziqin/project/CVPR2023-VLSAT/data/3DSSG_subset/relationships_train.json", "r") as read_file:
+        selected_scans = selected_scans.union(read_txt_to_list('/home/wingrune/3rscan-datasets/riorefer-train-scenes.txt'))
+        with open("/home/wingrune/3rscan-datasets/3DSSG/data/3RScan/3DSSG_subset/relationships_train.json", "r") as read_file:
             data = json.load(read_file)
     elif split == 'val':
-        selected_scans = selected_scans.union(read_txt_to_list('/data/wangziqin/project/CVPR2023-VLSAT/data/3DSSG_subset/validation_scans.txt'))
-        with open("/data/wangziqin/project/CVPR2023-VLSAT/data/3DSSG_subset/relationships_validation.json", "r") as read_file:
+        selected_scans = selected_scans.union(read_txt_to_list('/home/wingrune/3rscan-datasets/riorefer-val-scenes.txt'))
+        with open("/home/wingrune/3rscan-datasets/3DSSG/data/3RScan/3DSSG_subset/relationships_validation.json", "r") as read_file:
             data = json.load(read_file)
     else:
         raise RuntimeError('unknown split type:',split)
@@ -69,6 +76,25 @@ def read_json(split):
             scene_data[i['scan']] = {'obj': dict(), 'rel': list()}
         scene_data[i['scan']]['obj'].update(i['objects'])
         scene_data[i['scan']]['rel'].extend(i['relationships'])
+
+    with open("/home/wingrune/3rscan-datasets/objects.json", "r") as f:
+        objects = json.load(f)
+    #selected_scans = ["6bde60c0-9162-246f-8d1f-32543babecfb"]
+
+    for scan in tqdm(selected_scans):
+        # objects
+        for scan_i in objects['scans']:
+            if scan_i['scan'] == scan:
+                ssg_scan = scan_i
+                break
+
+        scene_dict = {}
+        for ob in ssg_scan['objects']:
+            if ob['label'] in classes:
+                scene_dict[ob['id']] = ob['label']
+            else:
+                scene_dict[ob['id']] = 'object'
+        scene_data[scan]['obj'] = scene_dict
 
     return scene_data, selected_scans
 
@@ -113,7 +139,7 @@ def read_extrinsic(extrinsic_path):
     return pose
 
 def read_scan_info(scan_id, mode='rgb'):
-    scan_path = os.path.join("/data/wangziqin/project/CVPR2023-VLSAT/data/3RScan", scan_id)
+    scan_path = os.path.join("/home/wingrune/3rscan-datasets/3DSSG/data/3RScan/data/3RScan/", scan_id)
     sequence_path = os.path.join(scan_path, "sequence")
     intrinsic_path = os.path.join(sequence_path, "_info.txt")
     intrinsic_info = read_intrinsic(intrinsic_path, mode='rgb')
@@ -157,6 +183,11 @@ def map_pc_to_image(points, instances, image_list, instance_names, extrinsics, i
     topk = min(30, max(topk, max_num * int(np.ceil(image_feature.shape[0] / len(instance_id)))), int(image_feature.shape[0] / 10))
     
     for i in instance_id:
+        print(len(instance_id))
+        if os.path.exists(os.path.join(save_path, f'instance_{i}_class_{instance_names[i]}_origin_view_mean.npy')):
+            continue
+        else:
+            print("Processing instance", i)
         # record the project quality
         fin = open(os.path.join(save_path, 'project_quality.txt'), 'a')
 
@@ -326,15 +357,20 @@ if __name__ == '__main__':
     print("========= Deal with {} ========".format(args.mode))
     scene_data, selected_scans = read_json(args.mode)
     # record global quanlity
-    fin_all = open(os.path.join(f'/data/wangziqin/project/CVPR2023-VLSAT/data/3RScan/{args.mode}_all_quanlity.txt'), 'a')
+    fin_all = open(os.path.join(f'/home/wingrune/3rscan-datasets/3DSSG/data/3RScan/data/3RScan/{args.mode}_all_quanlity.txt'), 'a')
+    selected_scans = ["4fbad314-465b-2a5d-8445-9d021f278c1e"]
     for i in tqdm(selected_scans):
+        print(i)
+        save_path = f'/home/wingrune/3rscan-datasets/3DSSG/data/3RScan/data/3RScan/{i}/multi_view'
+        #if os.path.exists(save_path) and len(os.listdir(save_path)) > 0:
+        #    continue
         instance_names = scene_data[i]['obj']
         pc_i, instances_i = read_pointcloud(i)
         # print(f'======= read image and extrinsic for {i} =========')
         image_list, extrinsic_list, intrinsic_info = read_scan_info(i)
-        save_path = f'/data/wangziqin/project/CVPR2023-VLSAT/data/3RScan/{i}/multi_view'
+
         os.makedirs(save_path, exist_ok=True)
         # print(f'======= map pointcloud to image =========')
-        class_list, class_weight = get_label('/data/wangziqin/project/CVPR2023-VLSAT/data/3DSSG_subset/classes.txt')
+        class_list, class_weight = get_label('/home/wingrune/3rscan-datasets/3DSSG/data/3RScan/3DSSG_subset/classes.txt')
         map_pc_to_image(pc_i, instances_i, image_list, instance_names, extrinsic_list, intrinsic_info['m_intrinsic'], intrinsic_info['m_Width'], intrinsic_info['m_Height'], class_list, class_weight, save_path, i, fin_all)
     fin_all.close()

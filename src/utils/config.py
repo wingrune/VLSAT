@@ -48,7 +48,7 @@ class Config(dict):
     def __getattr__(self, name):
         if self.get(name) is not None:
             return self[name]
-        raise RuntimeError('key',name,'is not defined!')
+        #raise RuntimeError('key',name,'is not defined!')
 
         return None
     

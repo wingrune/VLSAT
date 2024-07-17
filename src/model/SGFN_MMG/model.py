@@ -14,8 +14,8 @@ from src.model.model_utils.network_PointNet import (PointNetfeat,
 from src.utils.eva_utils_acc import (evaluate_topk_object,
                                  evaluate_topk_predicate,
                                  evaluate_triplet_topk, get_gt)
-from utils import op_utils
-
+from utils import op_utils, util
+import os
 
 class Mmgnet(BaseModel):
     def __init__(self, config, num_obj_class, num_rel_class, dim_descriptor=11):
@@ -157,6 +157,16 @@ class Mmgnet(BaseModel):
         ])
         self.lr_scheduler = CosineAnnealingLR(self.optimizer, T_max=self.config.max_iteration, last_epoch=-1)
         self.optimizer.zero_grad()
+        self.obj_encoder_time = []
+        self.rel_encoder_time = []
+        self.clip_adapter_time = []
+        self.gcn_obj_feature_2d_time = []
+        self.gcn_obj_feature_3d_time = []
+        self.evaluation_time = []
+        self.model_time = []
+        self.relations_names = util.read_relationships("/home/wingrune/3rscan-datasets/CVPR2023-VLSAT/data/3DSSG_subset/relationships.txt")
+        self.class_names = util.read_txt_to_list("/home/wingrune/3rscan-datasets/CVPR2023-VLSAT/data/3DSSG_subset/classes.txt")
+        
 
     def init_weight(self, obj_label_path, rel_label_path, adapter_path):
         torch.nn.init.xavier_uniform_(self.mlp_3d[0].weight)
@@ -285,42 +295,123 @@ class Mmgnet(BaseModel):
         #return torch.sum(torch.tensor(triplet_loss))
         return torch.mean(torch.tensor(triplet_loss))
     
-    def forward(self, obj_points, obj_2d_feats, edge_indices, descriptor=None, batch_ids=None, istrain=False):
+    def forward(self, obj_points, obj_2d_feats, gt_cls, edge_indices, descriptor=None, instances=None, scans=None, batch_ids=None, istrain=False):
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
 
+        start.record()
+        print(obj_points.shape)
+       
         obj_feature = self.obj_encoder(obj_points)
         if istrain:
             obj_feature_3d_mimic = obj_feature[..., :512].clone()
-        
-        obj_feature = self.mlp_3d(obj_feature)
 
+
+        obj_feature = self.mlp_3d(obj_feature)
+        end.record()
+
+        # Waits for everything to finish running
+        torch.cuda.synchronize()
+        self.obj_encoder_time.append(start.elapsed_time(end))
+
+       #if len(self.obj_encoder_time) > 11:
+            #print("MEAN INFERENCE TIME obj_encoder:", np.mean( self.obj_encoder_time[10:])) 
+            #print("STD INFERENCE TIME obj_encoder:", np.std( self.obj_encoder_time[10:])) 
         if self.mconfig.USE_SPATIAL:
             tmp = descriptor[:,3:].clone()
             tmp[:,6:] = tmp[:,6:].log() # only log on volume and length
             obj_feature = torch.cat([obj_feature, tmp],dim=-1)
-        
+
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+
+        start.record()
         ''' Create edge feature '''
         with torch.no_grad():
             edge_feature = op_utils.Gen_edge_descriptor(flow=self.flow)(descriptor, edge_indices)
 
         rel_feature_2d = self.rel_encoder_2d(edge_feature)
         rel_feature_3d = self.rel_encoder_3d(edge_feature)
+        #print(edge_feature.shape)
+        #print(rel_feature_3d.shape)
+        end.record()
 
+        # Waits for everything to finish running
+        torch.cuda.synchronize()
+
+        self.rel_encoder_time.append(start.elapsed_time(end))
+
+       #if len(self.obj_encoder_time) > 11:
+            #print("MEAN INFERENCE TIME REL ENCODER:", np.mean(self.rel_encoder_time[10:])) 
+            #print("STD INFERENCE TIME REL ENCODER:", np.std(self.rel_encoder_time[10:])) 
+
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+
+        start.record()
+        #print(obj_2d_feats.shape)
         ''' Create 2d feature'''
         with torch.no_grad():
             obj_2d_feats = self.clip_adapter(obj_2d_feats)
-        
+        #print(obj_2d_feats.shape)
+        end.record()
+
+        # Waits for everything to finish running
+        torch.cuda.synchronize()
+
+        self.clip_adapter_time.append(start.elapsed_time(end))
+
+       #if len(self.obj_encoder_time) > 11:
+            #print("MEAN INFERENCE TIME clip adapter:", np.mean(self.clip_adapter_time[10:])) 
+            #print("STD INFERENCE TIME clip adapter:", np.std(self.clip_adapter_time[10:])) 
+
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+
+        start.record()
         obj_features_2d_mimic = obj_2d_feats.clone()
 
         obj_center = descriptor[:, :3].clone()
         gcn_obj_feature_3d, gcn_obj_feature_2d, gcn_edge_feature_3d, gcn_edge_feature_2d \
             = self.mmg(obj_feature, obj_2d_feats, rel_feature_3d, rel_feature_2d, edge_indices, batch_ids, obj_center, descriptor.clone(), istrain=istrain)
+        
+        #print(descriptor.shape, obj_center.shape)
+        end.record()
 
+        # Waits for everything to finish running
+        torch.cuda.synchronize()
+
+        self.gcn_obj_feature_3d_time.append(start.elapsed_time(end))
+
+       #if len(self.obj_encoder_time) > 11:
+            #print("MEAN INFERENCE TIME GCN FEATURES 3D:", np.mean(self.gcn_obj_feature_3d_time[10:])) 
+            #print("STD INFERENCE TIME GCN FEATURES 3D:", np.std(self.gcn_obj_feature_3d_time[10:])) 
+
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+
+        start.record()
         # gcn_edge_feature_3d_dis = self.generate_object_pair_features(gcn_obj_feature_3d, gcn_edge_feature_3d, edge_indices)
         gcn_edge_feature_2d_dis = self.generate_object_pair_features(gcn_obj_feature_2d, gcn_edge_feature_2d, edge_indices)
-        
+        #print(self.relations_names)
+        print(gcn_edge_feature_3d.shape)
+        #print( gcn_edge_feature_2d.shape)
+        #print( gcn_edge_feature_2d_dis.shape)
         # gcn_edge_feature_3d_dis = self.triplet_projector_3d(gcn_edge_feature_3d_dis)
         gcn_edge_feature_2d_dis = self.triplet_projector_2d(gcn_edge_feature_2d_dis)
 
+        end.record()
+
+        # Waits for everything to finish running
+        torch.cuda.synchronize()
+
+        self.gcn_obj_feature_2d_time.append(start.elapsed_time(end))
+
+       #if len(self.obj_encoder_time) > 11:
+            #print("MEAN INFERENCE TIME GCN FEATURES 2D:", np.mean(self.gcn_obj_feature_2d_time[10:])) 
+            #print("STD INFERENCE TIME GCN FEATURES 2D:", np.std(self.gcn_obj_feature_2d_time[10:])) 
+
+        #input()
         rel_cls_3d = self.rel_predictor_3d(gcn_edge_feature_3d)
         rel_cls_2d = self.rel_predictor_2d(gcn_edge_feature_2d)
 
@@ -329,6 +420,17 @@ class Mmgnet(BaseModel):
         obj_logits_3d = logit_scale * self.obj_predictor_3d(gcn_obj_feature_3d / gcn_obj_feature_3d.norm(dim=-1, keepdim=True))
         obj_logits_2d = logit_scale * self.obj_predictor_2d(gcn_obj_feature_2d / gcn_obj_feature_2d.norm(dim=-1, keepdim=True))
 
+        k = 0
+        for i, o_1 in enumerate(instances):
+            for j, o_2 in enumerate(instances):
+                if i!=j:
+                    #print(k)
+                    rel_id = torch.argmax(rel_cls_3d, dim=1)[k].item()
+                    filename = f"{self.class_names[gt_cls[i]]}_{o_1}_{self.relations_names[rel_id]}_{self.class_names[gt_cls[j]]}_{o_2}.pt"
+                    file_path = os.path.join(f"/hdd/wingrune/output_vlsat/{scans[0]}", filename)
+                    torch.save(gcn_edge_feature_3d[k].clone().detach().cpu(), file_path)
+                    k+=1
+        
         if istrain:
             return obj_logits_3d, obj_logits_2d, rel_cls_3d, rel_cls_2d, obj_feature_3d_mimic, obj_features_2d_mimic, gcn_edge_feature_2d_dis, logit_scale
         else:
@@ -337,7 +439,9 @@ class Mmgnet(BaseModel):
     def process_train(self, obj_points, obj_2d_feats, gt_cls, descriptor, gt_rel_cls, edge_indices, batch_ids=None, with_log=False, ignore_none_rel=False, weights_obj=None, weights_rel=None):
         self.iteration +=1    
 
-        obj_logits_3d, obj_logits_2d, rel_cls_3d, rel_cls_2d, obj_feature_3d, obj_feature_2d, edge_feature_2d, obj_logit_scale = self(obj_points, obj_2d_feats, edge_indices.t().contiguous(), descriptor, batch_ids, istrain=True)
+        obj_logits_3d, obj_logits_2d, rel_cls_3d, rel_cls_2d, obj_feature_3d, obj_feature_2d, edge_feature_2d, obj_logit_scale = self(
+            obj_points, obj_2d_feats,  edge_indices.t().contiguous(), descriptor, batch_ids, istrain=True
+            )
         
         # compute loss for obj
         loss_obj_3d = F.cross_entropy(obj_logits_3d, gt_cls)
@@ -358,7 +462,7 @@ class Mmgnet(BaseModel):
                 if ignore_none_rel:
                     weight[0] = 0
                     weight *= 1e-2 # reduce the weight from ScanNet
-                    # print('set weight of none to 0')
+                    # #print('set weight of none to 0')
                 if 'NONE_RATIO' in self.mconfig:
                     weight[0] *= self.mconfig.NONE_RATIO
                     
@@ -455,10 +559,33 @@ class Mmgnet(BaseModel):
             ]
         return log
            
-    def process_val(self, obj_points, obj_2d_feats, gt_cls, descriptor, gt_rel_cls, edge_indices, batch_ids=None, with_log=False, use_triplet=False):
- 
-        obj_logits_3d, obj_logits_2d, rel_cls_3d, rel_cls_2d = self(obj_points, obj_2d_feats, edge_indices.t().contiguous(), descriptor, batch_ids, istrain=False)
+    def process_val(self, obj_points, obj_2d_feats, gt_cls, descriptor, gt_rel_cls, edge_indices, instances, scans, batch_ids=None, with_log=False, use_triplet=False, compute_metrics=True):
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+
+        start.record()
+        obj_logits_3d, obj_logits_2d, rel_cls_3d, rel_cls_2d = self(
+            obj_points, obj_2d_feats, gt_cls, edge_indices.t().contiguous(),
+            descriptor, instances, scans, batch_ids, istrain=False
+        )
+        end.record()
+
+        # Waits for everything to finish running
+        torch.cuda.synchronize()
+
+        self.model_time.append(start.elapsed_time(end))
+
+        if len(self.model_time) > 11:
+            print("MEAN INFERENCE FORWARD TIME:", np.mean(self.model_time[10:])) 
+            print("STD INFERENCE TIME:", np.std(self.model_time[10:]))
         
+        if not compute_metrics:
+            return
+        
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+
+        start.record()
         # compute metric
         top_k_obj = evaluate_topk_object(obj_logits_3d.detach().cpu(), gt_cls, topk=11)
         gt_edges = get_gt(gt_cls, gt_rel_cls, edge_indices, self.mconfig.multi_rel_outputs)
@@ -476,7 +603,17 @@ class Mmgnet(BaseModel):
             sub_scores = None
             obj_scores = None
             rel_scores = None
+        end.record()
 
+        # Waits for everything to finish running
+        torch.cuda.synchronize()
+        ##print("EVALUATION:", start.elapsed_time(end))
+        #input()
+        self.evaluation_time.append(start.elapsed_time(end))
+
+       #if len(self.evaluation_time) > 11:
+            #print("MEAN INFERENCE EVALUATION TIME:", np.mean(self.evaluation_time[10:])) 
+            #print("STD INFERENCE EVALUATION TIME:", np.std(self.evaluation_time[10:])) 
         return top_k_obj, top_k_obj_2d, top_k_rel, top_k_rel_2d, top_k_triplet, top_k_2d_triplet, cls_matrix, sub_scores, obj_scores, rel_scores
  
     

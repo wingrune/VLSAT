@@ -76,9 +76,9 @@ def train():
 
 def eval(adapter):
     dataset = MultiViewDataset(
-        root_path='/data/caidaigang/project/3DSSG_Repo/data/3RScan',
-        data_list_path='/data/caidaigang/project/3DSSG_Repo/data/3RScan/val_all_quanlity.txt',
-        labels_path='/data/caidaigang/project/3DSSG_Repo/data/3DSSG_subset/classes.txt',
+        root_path='/home/wingrune/3rscan-datasets/3DSSG/data/3RScan/data/3RScan',
+        data_list_path='/home/wingrune/3rscan-datasets/3DSSG/data/3RScan/data/3RScan/val_all_quanlity.txt',
+        labels_path='/home/wingrune/3rscan-datasets/3DSSG/data/3RScan/3DSSG_subset/classes.txt',
         mode='origin_view_mean'  # ['croped_view_mean', 'origin_view_mean', 'clip_view_mean']
     )
     dataloader = DataLoader(dataset, batch_size=32, shuffle=False, num_workers=4)

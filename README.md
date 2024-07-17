@@ -68,7 +68,7 @@ or just use the checkpoint
 # Train
 python -m main --mode train --config <config_path> --exp <exp_name>
 # Eval
-python -m main --mode eval --config <config_path> --exp <exp_name>
+python -m main --mode eval --config config/mmgnet.json --exp /hdd/wingrune/3dssg_best_ckpt
 ```
 
 # Paper

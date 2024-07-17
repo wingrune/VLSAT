@@ -108,7 +108,7 @@ def collate_fn_all_des(batch):
         # accumulate batch number to make edge_indices match correct object index
         count += i[0].shape[0]
 
-    return torch.cat(obj_point_list, dim=0), torch.cat(obj_label_list, dim=0), torch.cat(rel_label_list, dim=0), torch.cat(edge_indices, dim=0), torch.cat(descriptor, dim=0)
+    return torch.cat(obj_point_list, dim=0), torch.cat(obj_label_list, dim=0), torch.cat(rel_label_list, dim=0), torch.cat(edge_indices, dim=0), torch.cat(descriptor, dim=0), torch.cat(instances, dim=0)
 
 def collate_fn_all_2d(batch):
     # batch
@@ -156,7 +156,8 @@ def collate_fn_mmg(batch):
     rel_label_list = []
     edge_indices, descriptor = [], []
     batch_ids = []
-    
+    instances = []
+    scans = []
     count = 0
     for i, b in enumerate(batch):
         obj_point_list.append(b[0])
@@ -166,6 +167,8 @@ def collate_fn_mmg(batch):
         rel_label_list.append(b[4])
         edge_indices.append(b[5] + count)
         descriptor.append(b[6])
+        instances.append(b[7])
+        scans.append(b[8])
         # accumulate batch number to make edge_indices match correct object index
         count += b[0].shape[0]
         # get batchs location
@@ -173,4 +176,4 @@ def collate_fn_mmg(batch):
 
 
     return torch.cat(obj_point_list, dim=0), torch.cat(obj_2d_feats, dim=0), torch.cat(obj_label_list, dim=0), \
-         torch.cat(rel_label_list, dim=0), torch.cat(edge_indices, dim=0), torch.cat(descriptor, dim=0), torch.cat(batch_ids, dim=0)
+         torch.cat(rel_label_list, dim=0), torch.cat(edge_indices, dim=0), torch.cat(descriptor, dim=0), torch.cat(instances, dim=0), scans, torch.cat(batch_ids, dim=0)

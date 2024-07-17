@@ -24,16 +24,25 @@ def dataset_loading_3RScan(root:str, pth_selection:str,split:str,class_choice:li
     # read relationship json
     selected_scans=set()
     if split == 'train_scans' :
-        selected_scans = selected_scans.union(util.read_txt_to_list(os.path.join(pth_selection,'train_scans.txt')))
+        selected_scans = selected_scans.union(util.read_txt_to_list('/home/wingrune/3rscan-datasets/riorefer-train-scenes.txt'))
         with open(os.path.join(root, 'relationships_train.json'), "r") as read_file:
             data = json.load(read_file)
     elif split == 'validation_scans':
-        selected_scans = selected_scans.union(util.read_txt_to_list(os.path.join(pth_selection,'validation_scans.txt')))
-        with open(os.path.join(root, 'relationships_validation.json'), "r") as read_file:
+        #selected_scans = selected_scans.union(util.read_txt_to_list('/home/wingrune/3rscan-datasets/riorefer-val-scenes.txt'))
+        #with open(os.path.join(root, 'relationships_validation.json'), "r") as read_file:
+        #    data = json.load(read_file)
+        selected_scans = selected_scans.union(util.read_txt_to_list('/home/wingrune/3rscan-datasets/riorefer-train-scenes.txt'))
+        final_scans = []
+        for scan in selected_scans:
+            if os.path.exists(f"/hdd/wingrune/output_vlsat/{scan}") and len(os.listdir(f"/hdd/wingrune/output_vlsat/{scan}")) > 0:
+                continue
+            else:
+                final_scans.append(scan)
+        with open(os.path.join(root, 'relationships_train.json'), "r") as read_file:
             data = json.load(read_file)
     else:
         raise RuntimeError('unknown split type:',split)
-    return  classNames, relationNames, data, selected_scans
+    return  classNames, relationNames, data, final_scans
                         
 def load_mesh(path,label_file,use_rgb,use_normal):
     result=dict()
@@ -137,15 +146,30 @@ class SSGDatasetGraph(data.Dataset):
         if self.use_normal:
             self.dim_pts += 3
 
+
     def __getitem__(self, index):
         
         scan_id = self.scans[index]
+        #scan_id = "095821f7-e2c2-2de1-9568-b9ce59920e29_1"
         scan_id_no_split = scan_id.rsplit('_',1)[0]
         map_instance2labelName = self.objs_json[scan_id]
         path = os.path.join(self.root_3rscan, scan_id_no_split)
         data = load_mesh(path, self.mconfig.label_file, self.use_rgb, self.use_normal)
         points = data['points']
         instances = data['instances']
+        all_instance = [int(i) for i in np.unique(instances)] #instances are np.uint16 that does not convert to torch.tensor
+        nodes_all = list(map_instance2labelName.keys())
+        if 0 in all_instance: # remove background
+            all_instance.remove(0)
+        
+        nodes = []
+        for i, instance_id in enumerate(nodes_all):
+            if instance_id in all_instance:
+                nodes.append(int(instance_id))
+
+        all_instance = nodes
+
+        
 
         obj_points, obj_2d_feats, rel_points, gt_rels, gt_class, edge_indices, descriptor = \
             self.data_preparation(points, instances, self.mconfig.num_points, self.mconfig.num_points_union,
@@ -172,7 +196,7 @@ class SSGDatasetGraph(data.Dataset):
 
         if self.use_descriptor:
             if self.use_2d_feats:
-                return obj_points, obj_2d_feats, rel_points, gt_class, gt_rels, edge_indices, descriptor
+                return obj_points, obj_2d_feats, rel_points, gt_class, gt_rels, edge_indices, descriptor, torch.tensor(all_instance), scan_id_no_split
             return obj_points, rel_points, gt_class, gt_rels, edge_indices, descriptor
 
         return obj_points, rel_points, gt_class, gt_rels, edge_indices
@@ -214,7 +238,11 @@ class SSGDatasetGraph(data.Dataset):
     
     def read_relationship_json(self, data, selected_scans:list):
         rel, objs, scans = dict(), dict(), []
-
+        with open("/home/wingrune/3rscan-datasets/objects.json", "r") as f:
+            objects = json.load(f)
+        classes = set()
+        classes = classes.union(util.read_txt_to_list('/home/wingrune/3rscan-datasets/3DSSG/data/3RScan/3DSSG_subset/classes.txt'))
+        split = 1
         for scan_i in data['scans']:
             if scan_i["scan"] == 'fa79392f-7766-2d5c-869a-f5d6cfb62fc6':
                 if self.mconfig.label_file == "labels.instances.align.annotated.v2.ply":
@@ -226,19 +254,27 @@ class SSGDatasetGraph(data.Dataset):
                     continue
             if scan_i['scan'] not in selected_scans:
                 continue
-                
+            rel[scan_i["scan"] + "_" + str(split)] = []
+            for scan in objects['scans']:
+                if scan['scan'] == scan_i["scan"]:
+                    ssg_scan = scan
+                    break
+
             relationships_i = []
             for relationship in scan_i["relationships"]:
                 relationships_i.append(relationship)
                 
             objects_i = {}
-            for id, name in scan_i["objects"].items():
-                objects_i[int(id)] = name
+            for ob in ssg_scan["objects"]:
+                if ob['label'] in classes:
+                    objects_i[int(ob['id'])] = ob['label']
+                else:
+                    objects_i[int(ob['id'])] = 'object'
 
-            rel[scan_i["scan"] + "_" + str(scan_i["split"])] = relationships_i
-            objs[scan_i["scan"]+"_"+str(scan_i['split'])] = objects_i
-            scans.append(scan_i["scan"] + "_" + str(scan_i["split"]))
-
+            rel[scan_i["scan"] + "_" + str(split)].extend(relationships_i)
+            objs[scan_i["scan"]+"_"+str(split)] = objects_i
+            if scan_i["scan"] + "_" + str(split) not in scans:
+                scans.append(scan_i["scan"] + "_" + str(split))
         return rel, objs, scans
     
     def data_preparation(self, points, instances, num_points, num_points_union, scene_id="",
@@ -258,7 +294,7 @@ class SSGDatasetGraph(data.Dataset):
         for i, instance_id in enumerate(nodes_all):
             if instance_id in all_instance:
                 nodes.append(instance_id)
-        
+
         # get edge (instance pair) list, which is just index, nodes[index] = instance_id
         if all_edge:
             edge_indices = list(product(list(range(len(nodes))), list(range(len(nodes)))))
@@ -363,5 +399,5 @@ class SSGDatasetGraph(data.Dataset):
         label_node = torch.from_numpy(np.array(label_node, dtype=np.int64))
         edge_indices = torch.tensor(edge_indices,dtype=torch.long)
         obj_2d_feats = torch.from_numpy(obj_2d_feats.astype(np.float32))    
-        
+
         return obj_points, obj_2d_feats, rel_points, gt_rels, label_node, edge_indices, descriptor

@@ -67,8 +67,8 @@ def compute(classNames,relationNames, relationship_data, selections:list = None,
             sub = relationship[1] # id subject
             rel = relationship[2] # id relationship
             
-            if obj == 0 or sub == 0:
-                raise RuntimeError('found obj or sub is 0')
+            #if obj == 0 or sub == 0:
+            #    raise RuntimeError('found obj or sub is 0')
             
             if not obj in instance2LabelName:
                 RuntimeWarning('key not found:',obj)

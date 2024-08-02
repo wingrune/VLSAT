@@ -6,7 +6,7 @@ try: import define
 except: from utils import define
 
 def read_labels(plydata):
-    data = plydata.metadata['ply_raw']['vertex']['data']
+    data = plydata.metadata['_ply_raw']['vertex']['data']
     try:
         labels = data['objectId']
     except:
@@ -15,7 +15,7 @@ def read_labels(plydata):
 
 
 def get_label(ply_in, dataset_type, label_type):
-    data = ply_in.metadata['ply_raw']['vertex']['data']
+    data = ply_in.metadata['_ply_raw']['vertex']['data']
     if dataset_type == None or dataset_type == '' or label_type == None:
         try:
             labels = data['objectId']

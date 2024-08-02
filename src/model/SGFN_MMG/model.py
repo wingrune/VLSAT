@@ -426,6 +426,8 @@ class Mmgnet(BaseModel):
                 if i!=j:
                     #print(k)
                     rel_id = torch.argmax(rel_cls_3d, dim=1)[k].item()
+                    #print(o_1, gt_cls[i], rel_id, o_2, gt_cls[j])
+                    #input()
                     filename = f"{self.class_names[gt_cls[i]]}_{o_1}_{self.relations_names[rel_id]}_{self.class_names[gt_cls[j]]}_{o_2}.pt"
                     file_path = os.path.join(f"/hdd/wingrune/output_vlsat/{scans[0]}", filename)
                     torch.save(gcn_edge_feature_3d[k].clone().detach().cpu(), file_path)

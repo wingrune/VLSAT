@@ -15,14 +15,15 @@ from utils import define, util, util_data, util_ply
 
 def dataset_loading_3RScan(root:str, pth_selection:str,split:str,class_choice:list=None):  
     # read object class
-    pth_catfile = os.path.join(pth_selection, 'classes.txt')
+    pth_catfile = "/home/wingrune/3rscan-datasets/CVPR2023-VLSAT/data/3DSSG_subset/classes.txt"
     classNames = util.read_txt_to_list(pth_catfile)
     # read relationship class
-    pth_relationship = os.path.join(pth_selection, 'relationships.txt')
+    pth_relationship = "/home/wingrune/3rscan-datasets/CVPR2023-VLSAT/data/3DSSG_subset/relationships.txt"
     util.check_file_exist(pth_relationship)
     relationNames = util.read_relationships(pth_relationship)
     # read relationship json
     selected_scans=set()
+
     if split == 'train_scans' :
         selected_scans = selected_scans.union(util.read_txt_to_list('/home/wingrune/3rscan-datasets/riorefer-train-scenes.txt'))
         with open(os.path.join(root, 'relationships_train.json'), "r") as read_file:
@@ -31,26 +32,36 @@ def dataset_loading_3RScan(root:str, pth_selection:str,split:str,class_choice:li
         #selected_scans = selected_scans.union(util.read_txt_to_list('/home/wingrune/3rscan-datasets/riorefer-val-scenes.txt'))
         #with open(os.path.join(root, 'relationships_validation.json'), "r") as read_file:
         #    data = json.load(read_file)
-        selected_scans = selected_scans.union(util.read_txt_to_list('/home/wingrune/3rscan-datasets/riorefer-train-scenes.txt'))
+        selected_scans = selected_scans.union(util.read_txt_to_list('/home/wingrune/3rscan-datasets/CVPR2023-VLSAT/data/tmp/train_scans.txt'))
         final_scans = []
         for scan in selected_scans:
             if os.path.exists(f"/hdd/wingrune/output_vlsat/{scan}") and len(os.listdir(f"/hdd/wingrune/output_vlsat/{scan}")) > 0:
                 continue
             else:
                 final_scans.append(scan)
-        with open(os.path.join(root, 'relationships_train.json'), "r") as read_file:
+        with open(os.path.join('/home/wingrune/3rscan-datasets/CVPR2023-VLSAT/data/tmp/relationships_train.json'), "r") as read_file:
             data = json.load(read_file)
+
     else:
         raise RuntimeError('unknown split type:',split)
     return  classNames, relationNames, data, final_scans
                         
 def load_mesh(path,label_file,use_rgb,use_normal):
     result=dict()
-    if label_file == 'labels.instances.align.annotated.v2.ply' or label_file == 'labels.instances.align.annotated.ply':
+    if label_file == '_vh_clean_2.labels.ply':
+        scan_id = path.split("/")[-1]
+        plydata = trimesh.load(os.path.join(path,scan_id+label_file), process=False)
+        pth_seg = os.path.join(path,scan_id+"_vh_clean_2.0.010000.segs.json")
+        with open(pth_seg) as f:
+            segs = json.load(f)
+        pth_agg = os.path.join(path,scan_id+".aggregation.json")
+        with open(pth_agg) as f:
+            aggre = json.load(f)
+        plydata,instances = util.scannet_get_instance_ply(plydata, segs, aggre,random_color=False)
         
-        plydata = trimesh.load(os.path.join(path,label_file), process=False)
-        points = np.array(plydata.vertices)
-        instances = util_ply.read_labels(plydata).flatten()
+        points = plydata.vertices
+        #points = np.array(plydata.vertices)
+        #instances = util_ply.read_labels(plydata).flatten()
         
         if use_rgb:
             rgbs = np.array(plydata.visual.vertex_colors.tolist())[:,:3]
@@ -103,10 +114,13 @@ class SSGDatasetGraph(data.Dataset):
         # for multi relation output, we just remove off 'None' relationship
         if multi_rel_outputs:
             self.relationNames.pop(0)
-                
-        wobjs, wrels, o_obj_cls, o_rel_cls = compute_weight_occurrences.compute(self.classNames, self.relationNames, data,selected_scans, False)
-        self.w_cls_obj = torch.from_numpy(np.array(o_obj_cls)).float().to(self.config.DEVICE)
-        self.w_cls_rel = torch.from_numpy(np.array(o_rel_cls)).float().to(self.config.DEVICE)
+
+        #wobjs, wrels, o_obj_cls, o_rel_cls = compute_weight_occurrences.compute(self.classNames, self.relationNames, data,selected_scans, False)
+        
+        #print(self.relationNames)
+        #input()
+        self.w_cls_obj = torch.from_numpy(np.ones((160,))).float().to(self.config.DEVICE)
+        self.w_cls_rel = torch.from_numpy(np.ones((160,))).float().to(self.config.DEVICE)
         
         # for single relation output, we set 'None' relationship weight as 1e-3
         if not multi_rel_outputs:
@@ -150,6 +164,8 @@ class SSGDatasetGraph(data.Dataset):
     def __getitem__(self, index):
         
         scan_id = self.scans[index]
+        print(scan_id)
+        #scan_id = "scene0435_00_1"
         #scan_id = "095821f7-e2c2-2de1-9568-b9ce59920e29_1"
         scan_id_no_split = scan_id.rsplit('_',1)[0]
         map_instance2labelName = self.objs_json[scan_id]
@@ -159,13 +175,15 @@ class SSGDatasetGraph(data.Dataset):
         instances = data['instances']
         all_instance = [int(i) for i in np.unique(instances)] #instances are np.uint16 that does not convert to torch.tensor
         nodes_all = list(map_instance2labelName.keys())
-        if 0 in all_instance: # remove background
-            all_instance.remove(0)
-        
+        #if 0 in all_instance: # remove background
+        #    all_instance.remove(0)
+
+
         nodes = []
         for i, instance_id in enumerate(nodes_all):
-            if instance_id in all_instance:
+            if instance_id in all_instance and i < 80:
                 nodes.append(int(instance_id))
+            
 
         all_instance = nodes
 
@@ -238,11 +256,12 @@ class SSGDatasetGraph(data.Dataset):
     
     def read_relationship_json(self, data, selected_scans:list):
         rel, objs, scans = dict(), dict(), []
-        with open("/home/wingrune/3rscan-datasets/objects.json", "r") as f:
-            objects = json.load(f)
+        #with open("/home/wingrune/3rscan-datasets/objects.json", "r") as f:
+        #    objects = json.load(f)
         classes = set()
-        classes = classes.union(util.read_txt_to_list('/home/wingrune/3rscan-datasets/3DSSG/data/3RScan/3DSSG_subset/classes.txt'))
+        classes = classes.union(util.read_txt_to_list('/home/wingrune/3rscan-datasets/CVPR2023-VLSAT/data/3DSSG_subset/classes.txt'))
         split = 1
+
         for scan_i in data['scans']:
             if scan_i["scan"] == 'fa79392f-7766-2d5c-869a-f5d6cfb62fc6':
                 if self.mconfig.label_file == "labels.instances.align.annotated.v2.ply":
@@ -255,26 +274,25 @@ class SSGDatasetGraph(data.Dataset):
             if scan_i['scan'] not in selected_scans:
                 continue
             rel[scan_i["scan"] + "_" + str(split)] = []
-            for scan in objects['scans']:
-                if scan['scan'] == scan_i["scan"]:
-                    ssg_scan = scan
-                    break
 
             relationships_i = []
             for relationship in scan_i["relationships"]:
                 relationships_i.append(relationship)
                 
             objects_i = {}
-            for ob in ssg_scan["objects"]:
-                if ob['label'] in classes:
-                    objects_i[int(ob['id'])] = ob['label']
+            for ob_id, ob_label in scan_i["objects"].items():
+                if ob_label in classes:
+                    objects_i[int(ob_id)] = ob_label
                 else:
-                    objects_i[int(ob['id'])] = 'object'
-
+                    objects_i[int(ob_id)] = 'object'
+            print(scan_i["scan"])
+            print(objects_i)
+            
             rel[scan_i["scan"] + "_" + str(split)].extend(relationships_i)
             objs[scan_i["scan"]+"_"+str(split)] = objects_i
             if scan_i["scan"] + "_" + str(split) not in scans:
                 scans.append(scan_i["scan"] + "_" + str(split))
+        #exit()
         return rel, objs, scans
     
     def data_preparation(self, points, instances, num_points, num_points_union, scene_id="",
@@ -287,12 +305,11 @@ class SSGDatasetGraph(data.Dataset):
         all_instance = list(np.unique(instances))
         nodes_all = list(instance2labelName.keys())
 
-        if 0 in all_instance: # remove background
-            all_instance.remove(0)
-        
+        #if 0 in all_instance: # remove background
+        #    all_instance.remove(0)
         nodes = []
         for i, instance_id in enumerate(nodes_all):
-            if instance_id in all_instance:
+            if instance_id in all_instance and i<80:
                 nodes.append(instance_id)
 
         # get edge (instance pair) list, which is just index, nodes[index] = instance_id
@@ -341,8 +358,8 @@ class SSGDatasetGraph(data.Dataset):
         
         for r in rel_json:
             if r[0] not in nodes or r[1] not in nodes: continue
-            assert r[3] in relationships, "invalid relation name"
-            r[2] = relationships.index(r[3]) # remap the index of relationships in case of custom relationNames
+            #assert r[3] in relationships, "invalid relation name"
+            #r[2] = relationships.index(r[3]) # remap the index of relationships in case of custom relationNames
 
             if multi_rel_outputs:
                 adj_matrix_onehot[nodes.index(r[0]), nodes.index(r[1]), r[2]] = 1

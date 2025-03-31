@@ -1,0 +1,15 @@
+{
+  "type": "train",
+  "label_type": "ScanNet20",
+  "pth_out": "../data/tmp",
+  "target_scan": "",
+  "scan_name": "_vh_clean_2.labels.ply",
+  "verbose": 1,
+  "debug": 0,
+  "search_method": "BBOX",
+  "radius_receptive": 0.5,
+  "max_dist": 0.1,
+  "min_seg_size": 0,
+  "corr_thres": 0.5,
+  "occ_thres": 0.75
+}

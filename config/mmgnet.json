@@ -1,8 +1,8 @@
 {
   "_NAME": ["SGFN", "Mmgnet"],
-  "MODEL_PATH": "/home/wingrune/3rscan-datasets/CVPR2023-VLSAT/src/model/model.py",
+  "MODEL_PATH": "/home/jovyan/Tatiana_Z/CVPR2023-VLSAT/src/model/model.py",
   "NAME": "Mmgnet",
-  "PATH": "/home/wingrune/3rscan-datasets/CVPR2023-VLSAT/output",
+  "PATH": "/home/jovyan/Tatiana_Z/CVPR2023-VLSAT/output",
   "VERBOSE": false,
   "SEED": 2020,
   "MAX_EPOCHES": 100,
@@ -56,17 +56,17 @@
     "NUM_HEADS": 8,
     "use_pretrain":"",
     "use_descriptor": true,
-    "obj_label_path":"/home/wingrune/3rscan-datasets/CVPR2023-VLSAT/data/3DSSG_subset/classes.txt",
-    "rel_label_path":"/home/wingrune/3rscan-datasets/CVPR2023-VLSAT/data/3DSSG_subset/relationships.txt",
-    "adapter_path":"/home/wingrune/3rscan-datasets/CVPR2023-VLSAT/clip_adapter/checkpoint/origin_mean.pth"
+    "obj_label_path":"/home/jovyan/Tatiana_Z/CVPR2023-VLSAT/data/3DSSG_subset/classes.txt",
+    "rel_label_path":"/home/jovyan/Tatiana_Z/CVPR2023-VLSAT/data/3DSSG_subset/relationships.txt",
+    "adapter_path":"/home/jovyan/Tatiana_Z/CVPR2023-VLSAT/clip_adapter/checkpoint/origin_mean.pth"
   },
   "dataset": {
-    "root": "/home/wingrune/3rscan-datasets/CVPR2023-VLSAT/data/tmp",
+    "root": "/home/jovyan/Tatiana_Z/CVPR2023-VLSAT/data/tmp",
     "selection": "",
     "use_data_augmentation": false,
     "ignore_scannet_rel": true,
     "is_v2": true,
-    "_label_file": ["_vh_clean_2.labels.ply", "labels.instances.align.annotated.v2.ply", "inseg.ply", "cvvseg.ply"],
+    "_label_file": [".pt", "_vh_clean_2.labels.ply", "labels.instances.align.annotated.v2.ply", "inseg.ply", "cvvseg.ply"],
     "label_file": "_vh_clean_2.labels.ply",
     "data_augmentation": false,
     "num_points": 128,

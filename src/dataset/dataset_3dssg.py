@@ -15,10 +15,10 @@ from utils import define, util, util_data, util_ply
 
 def dataset_loading_3RScan(root:str, pth_selection:str,split:str,class_choice:list=None):  
     # read object class
-    pth_catfile = "/home/wingrune/3rscan-datasets/CVPR2023-VLSAT/data/3DSSG_subset/classes.txt"
+    pth_catfile = "/home/jovyan/Tatiana_Z/CVPR2023-VLSAT/data/3DSSG_subset/classes.txt"
     classNames = util.read_txt_to_list(pth_catfile)
     # read relationship class
-    pth_relationship = "/home/wingrune/3rscan-datasets/CVPR2023-VLSAT/data/3DSSG_subset/relationships.txt"
+    pth_relationship = "/home/jovyan/Tatiana_Z/CVPR2023-VLSAT/data/3DSSG_subset/relationships.txt"
     util.check_file_exist(pth_relationship)
     relationNames = util.read_relationships(pth_relationship)
     # read relationship json
@@ -32,14 +32,14 @@ def dataset_loading_3RScan(root:str, pth_selection:str,split:str,class_choice:li
         #selected_scans = selected_scans.union(util.read_txt_to_list('/home/wingrune/3rscan-datasets/riorefer-val-scenes.txt'))
         #with open(os.path.join(root, 'relationships_validation.json'), "r") as read_file:
         #    data = json.load(read_file)
-        selected_scans = selected_scans.union(util.read_txt_to_list('/home/wingrune/3rscan-datasets/CVPR2023-VLSAT/data/tmp/train_scans.txt'))
+        selected_scans = selected_scans.union(util.read_txt_to_list('/home/jovyan/Tatiana_Z/CVPR2023-VLSAT/data/tmp/train_scans.txt'))
         final_scans = []
         for scan in selected_scans:
-            if os.path.exists(f"/hdd/wingrune/output_vlsat/{scan}") and len(os.listdir(f"/hdd/wingrune/output_vlsat/{scan}")) > 0:
+            if os.path.exists(f"/home/jovyan/Tatiana_Z/output_vlsat/{scan}") and len(os.listdir(f"/home/jovyan/Tatiana_Z/output_vlsat/{scan}")) > 0:
                 continue
             else:
                 final_scans.append(scan)
-        with open(os.path.join('/home/wingrune/3rscan-datasets/CVPR2023-VLSAT/data/tmp/relationships_train.json'), "r") as read_file:
+        with open(os.path.join('/home/jovyan/Tatiana_Z/CVPR2023-VLSAT/data/tmp/relationships_train.json'), "r") as read_file:
             data = json.load(read_file)
 
     else:
@@ -51,6 +51,8 @@ def load_mesh(path,label_file,use_rgb,use_normal):
     if label_file == '_vh_clean_2.labels.ply':
         scan_id = path.split("/")[-1]
         plydata = trimesh.load(os.path.join(path,scan_id+label_file), process=False)
+        labels = plydata.metadata['ply_raw']['vertex']['data']['label']
+
         pth_seg = os.path.join(path,scan_id+"_vh_clean_2.0.010000.segs.json")
         with open(pth_seg) as f:
             segs = json.load(f)
@@ -59,6 +61,28 @@ def load_mesh(path,label_file,use_rgb,use_normal):
             aggre = json.load(f)
         plydata,instances = util.scannet_get_instance_ply(plydata, segs, aggre,random_color=False)
         
+        pth_ins_segm = os.path.join("/home/jovyan/Tatiana_Z/save_oneformer_predictions_train", scan_id)
+        instances = {
+            "labels": [],
+            "segments": [],
+        }
+
+        filenames = os.listdir(pth_ins_segm)
+        for i in range(len(filenames)):
+            for filename in filenames:
+                if filename.startswith(f"{i}_"):
+                    break
+            pred_mask = torch.load(os.path.join(pth_ins_segm, filename))
+            
+            #pts = points_gt[pred_mask["pred_mask"]]
+            idx = int(filename.split("_")[0])
+            label = filename.split("_")[-1].split(".")[0]
+            instances["labels"].append(label)
+            instances["segments"].append(np.where(pred_mask["pred_mask"])[0])
+            #instances["indices"].append(idx)
+        #for i, obj in enumerate(scene_data):
+        #    instances["labels"].append(obj['label'])
+        #    instances["segments"].append(obj['segments'])
         points = plydata.vertices
         #points = np.array(plydata.vertices)
         #instances = util_ply.read_labels(plydata).flatten()
@@ -164,8 +188,8 @@ class SSGDatasetGraph(data.Dataset):
     def __getitem__(self, index):
         
         scan_id = self.scans[index]
-        print(scan_id)
-        #scan_id = "scene0435_00_1"
+        #print(scan_id)
+        #scan_id = "scene0011_00_1"
         #scan_id = "095821f7-e2c2-2de1-9568-b9ce59920e29_1"
         scan_id_no_split = scan_id.rsplit('_',1)[0]
         map_instance2labelName = self.objs_json[scan_id]
@@ -173,7 +197,8 @@ class SSGDatasetGraph(data.Dataset):
         data = load_mesh(path, self.mconfig.label_file, self.use_rgb, self.use_normal)
         points = data['points']
         instances = data['instances']
-        all_instance = [int(i) for i in np.unique(instances)] #instances are np.uint16 that does not convert to torch.tensor
+        
+        all_instance = np.arange(len(instances['labels'])) #instances are np.uint16 that does not convert to torch.tensor
         nodes_all = list(map_instance2labelName.keys())
         #if 0 in all_instance: # remove background
         #    all_instance.remove(0)
@@ -181,9 +206,8 @@ class SSGDatasetGraph(data.Dataset):
 
         nodes = []
         for i, instance_id in enumerate(nodes_all):
-            if instance_id in all_instance and i < 80:
+            if instance_id in all_instance:
                 nodes.append(int(instance_id))
-            
 
         all_instance = nodes
 
@@ -259,7 +283,7 @@ class SSGDatasetGraph(data.Dataset):
         #with open("/home/wingrune/3rscan-datasets/objects.json", "r") as f:
         #    objects = json.load(f)
         classes = set()
-        classes = classes.union(util.read_txt_to_list('/home/wingrune/3rscan-datasets/CVPR2023-VLSAT/data/3DSSG_subset/classes.txt'))
+        classes = classes.union(util.read_txt_to_list('/home/jovyan/Tatiana_Z/CVPR2023-VLSAT/data/3DSSG_subset/classes.txt'))
         split = 1
 
         for scan_i in data['scans']:
@@ -285,8 +309,6 @@ class SSGDatasetGraph(data.Dataset):
                     objects_i[int(ob_id)] = ob_label
                 else:
                     objects_i[int(ob_id)] = 'object'
-            print(scan_i["scan"])
-            print(objects_i)
             
             rel[scan_i["scan"] + "_" + str(split)].extend(relationships_i)
             objs[scan_i["scan"]+"_"+str(split)] = objects_i
@@ -302,14 +324,14 @@ class SSGDatasetGraph(data.Dataset):
                      padding=0.2, num_max_rel=-1, shuffle_objs=True, all_edge=True, use_2d_feats=False, multi_view_root=None):
         #all_edge = for_train
         # get instance list
-        all_instance = list(np.unique(instances))
+        all_instance = list(np.arange(len(instances['labels'])))
         nodes_all = list(instance2labelName.keys())
 
         #if 0 in all_instance: # remove background
         #    all_instance.remove(0)
         nodes = []
         for i, instance_id in enumerate(nodes_all):
-            if instance_id in all_instance and i<80:
+            if instance_id in all_instance:
                 nodes.append(instance_id)
 
         # get edge (instance pair) list, which is just index, nodes[index] = instance_id
@@ -335,7 +357,7 @@ class SSGDatasetGraph(data.Dataset):
             instance_name = instance2labelName[instance_id]
             label_node.append(classNames.index(instance_name))
             # get node point
-            obj_pointset = points[np.where(instances == instance_id)[0]]
+            obj_pointset = points[instances['segments'][instance_id],:]
             min_box = np.min(obj_pointset[:,:3], 0) - padding
             max_box = np.max(obj_pointset[:,:3], 0) + padding
             instances_box[instance_id] = (min_box,max_box)  
@@ -386,9 +408,13 @@ class SSGDatasetGraph(data.Dataset):
                 gt_rels[e,:] = adj_matrix_onehot[index1,index2,:]
             else:
                 gt_rels[e] = adj_matrix[index1,index2]
-
-            mask1 = (instances == instance1).astype(np.int32) * 1
-            mask2 = (instances == instance2).astype(np.int32) * 2
+            
+            mask1 = np.zeros(len(points))
+            mask1[instances['segments'][instance1]] = 1
+            mask1 = mask1.astype(np.int32) * 1
+            mask2 = np.zeros(len(points))
+            mask2[instances['segments'][instance2]] = 1
+            mask2 = mask2.astype(np.int32) * 2
             mask_ = np.expand_dims(mask1 + mask2, 1)
             bbox1 = instances_box[instance1]
             bbox2 = instances_box[instance2]

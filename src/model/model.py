@@ -208,8 +208,7 @@ class MMGNet():
         model_time = []
         for i, items in enumerate(val_loader, 0):
             ''' get data '''
-            print(i, f"/hdd/wingrune/output_vlsat/{items[7][0]}")
-            os.makedirs(f"/hdd/wingrune/output_vlsat/{items[7][0]}", exist_ok=True)
+            print(i, f"/home/jovyan/Tatiana_Z/output_vlsat/{items[7][0]}")
 
             obj_points, obj_2d_feats, gt_class, gt_rel_cls, edge_indices, descriptor, instances, scans, batch_ids = self.data_processing_val(items)
             if len(obj_points) > 100:

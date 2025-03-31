@@ -122,7 +122,7 @@ def load_scannet(pth_ply, pth_agg, pth_seg, verbose=False, random_color = False)
 
     plydata,instances = scannet_get_instance_ply(plydata, segs, aggre,random_color=random_color )
     
-    labels = plydata.metadata['_ply_raw']['vertex']['data']['label'].flatten()
+    labels = plydata.metadata['ply_raw']['vertex']['data']['label'].flatten()
     points = plydata.vertices
     
     # the label is in the range of 1 to 40. 0 is unlabeled
@@ -156,8 +156,9 @@ def scannet_get_instance_ply(plydata, segs, aggre, random_color=False):
             
     ''' Over write label to segments'''
     # vertices = plydata.vertices
+    #print(plydata.metadata)
     try:
-        labels = plydata.metadata['_ply_raw']['vertex']['data']['label']
+        labels = plydata.metadata['ply_raw']['vertex']['data']['label']
     except: labels = plydata.elements[0]['label']
     
     instances = np.zeros_like(labels)

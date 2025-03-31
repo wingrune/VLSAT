@@ -164,8 +164,8 @@ class Mmgnet(BaseModel):
         self.gcn_obj_feature_3d_time = []
         self.evaluation_time = []
         self.model_time = []
-        self.relations_names = util.read_relationships("/home/wingrune/3rscan-datasets/CVPR2023-VLSAT/data/3DSSG_subset/relationships.txt")
-        self.class_names = util.read_txt_to_list("/home/wingrune/3rscan-datasets/CVPR2023-VLSAT/data/3DSSG_subset/classes.txt")
+        self.relations_names = util.read_relationships("/home/jovyan/Tatiana_Z/CVPR2023-VLSAT/data/3DSSG_subset/relationships.txt")
+        self.class_names = util.read_txt_to_list("/home/jovyan/Tatiana_Z/CVPR2023-VLSAT/data/3DSSG_subset/classes.txt")
         
 
     def init_weight(self, obj_label_path, rel_label_path, adapter_path):
@@ -421,6 +421,7 @@ class Mmgnet(BaseModel):
         obj_logits_2d = logit_scale * self.obj_predictor_2d(gcn_obj_feature_2d / gcn_obj_feature_2d.norm(dim=-1, keepdim=True))
 
         k = 0
+        scene_dict = {}
         for i, o_1 in enumerate(instances):
             for j, o_2 in enumerate(instances):
                 if i!=j:
@@ -428,11 +429,12 @@ class Mmgnet(BaseModel):
                     rel_id = torch.argmax(rel_cls_3d, dim=1)[k].item()
                     #print(o_1, gt_cls[i], rel_id, o_2, gt_cls[j])
                     #input()
-                    filename = f"{self.class_names[gt_cls[i]]}_{o_1}_{self.relations_names[rel_id]}_{self.class_names[gt_cls[j]]}_{o_2}.pt"
-                    file_path = os.path.join(f"/hdd/wingrune/output_vlsat/{scans[0]}", filename)
-                    torch.save(gcn_edge_feature_3d[k].clone().detach().cpu(), file_path)
+                    hash_key = f"{self.class_names[gt_cls[i]]}_{o_1}_{self.relations_names[rel_id]}_{self.class_names[gt_cls[j]]}_{o_2}"
+                    scene_dict[hash_key] = gcn_edge_feature_3d[k].clone().detach().cpu()
+                    #torch.save(gcn_edge_feature_3d[k].clone().detach().cpu(), file_path)
                     k+=1
-        
+        torch.save(scene_dict, f"/home/jovyan/Tatiana_Z/output_vlsat_oneformer3d/{scans[0]}.pt")
+        #exit()
         if istrain:
             return obj_logits_3d, obj_logits_2d, rel_cls_3d, rel_cls_2d, obj_feature_3d_mimic, obj_features_2d_mimic, gcn_edge_feature_2d_dis, logit_scale
         else:
